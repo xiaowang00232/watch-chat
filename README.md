@@ -47,18 +47,12 @@
 
 已为手机端和手表端分别生成 debug APK：
 
-| 版本 | 路径 | 包名 | 适用设备 |
+| 版本 |  包名 | 适用设备 |
 | --- | --- | --- | --- |
-| 手机端 | `app/build/outputs/apk/debug/app-debug.apk` | `com.xw00232.watchchat.app` | Android 8.0+ 手机，方便调试测试 |
-| 手表端 | `wear/build/outputs/apk/debug/wear-debug.apk` | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
+| 手机端 |  `com.xw00232.watchchat.app` | Android 8.0+ 手机，方便调试测试 |
+| 手表端 | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
 
-```bash
-# 手机（启用 ADB 调试后）
-adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-# 手表（通过 USB 或 adb pair 连接到手表）
-adb install -r wear/build/outputs/apk/debug/wear-debug.apk
-```
 
 安装后进入设置页面填入 API Key 即可直接使用（默认 Base URL、模型、流式开关均已配好）。
 
