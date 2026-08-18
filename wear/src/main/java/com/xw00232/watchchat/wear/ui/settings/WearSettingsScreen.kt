@@ -1,4 +1,4 @@
-﻿package com.xw00232.watchchat.wear.ui.settings
+package com.xw00232.watchchat.wear.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +62,7 @@ fun WearSettingsScreen(
     var models by remember { mutableStateOf(listOf<String>()) }
     var systemPrompt by remember { mutableStateOf("") }
     var streamEnabled by remember { mutableStateOf(true) }
+    var resumeLastConversation by remember { mutableStateOf(true) }
     var newModel by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
@@ -74,6 +75,7 @@ fun WearSettingsScreen(
         models = settings.models
         systemPrompt = settings.systemPrompt
         streamEnabled = settings.streamEnabled
+        resumeLastConversation = settings.resumeLastConversation
         ready = true
     }
 
@@ -172,6 +174,28 @@ fun WearSettingsScreen(
                     )
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "打开时继续上次对话", fontSize = 11.sp, color = Color.White)
+                    Text(
+                        text = "启动后自动加载最近一次对话",
+                        fontSize = 9.sp,
+                        color = Color(0xFF9AA0A6)
+                    )
+                }
+                Switch(
+                    checked = resumeLastConversation,
+                    onCheckedChange = { resumeLastConversation = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color(0xFF1A73E8),
+                        checkedTrackColor = Color(0xFF1A73E8).copy(alpha = 0.4f)
+                    )
+                )
+            }
 
             Spacer(Modifier.height(6.dp))
             WearSectionLabel("模型管理")
@@ -263,7 +287,8 @@ fun WearSettingsScreen(
                                 selectedModel = selectedModel,
                                 models = models,
                                 systemPrompt = systemPrompt,
-                                streamEnabled = streamEnabled
+                                streamEnabled = streamEnabled,
+                                resumeLastConversation = resumeLastConversation
                             ) { message -> toast(message) }
                         }
                     },

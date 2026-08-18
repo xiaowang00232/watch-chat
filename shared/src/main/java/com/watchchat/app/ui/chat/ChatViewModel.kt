@@ -26,6 +26,8 @@ data class ChatUiState(
     val title: String = "新对话",
     val messages: List<UiMessage> = emptyList(),
     val streamingText: String? = null,
+    /** 流结束后落库的那条 AI 消息 id，UI 在打字动画期间用它隐藏重复消息。 */
+    val streamingMessageId: Long? = null,
     val isStreaming: Boolean = false,
     val input: String = "",
     val error: String? = null,
@@ -37,7 +39,9 @@ class ChatViewModel(
     private val settingsRepository: SettingsRepository,
     private val chatRepository: ChatRepository,
     private val conversationRepository: ConversationRepository,
-    initialConversationId: Long?
+    initialConversationId: Long?,
+    /** 为 true 且设置开启时，新建聊天页自动续接最近一次对话。 */
+    private val resumeLast: Boolean = true
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState(conversationId = initialConversationId))
@@ -55,16 +59,20 @@ class ChatViewModel(
         }
 
         if (initialConversationId != null) {
+            attachConversation(initialConversationId)
+        } else if (resumeLast) {
+            // 打开 App 时续接最近一次对话；设置关闭或没有历史则保持新建对话
             viewModelScope.launch {
-                conversationRepository.observeConversation(initialConversationId).collect { conversation ->
-                    if (conversation != null) {
-                        _uiState.update {
-                            it.copy(title = conversation.title, selectedModel = conversation.model)
-                        }
+                val settings = settingsRepository.currentSettings()
+                if (!settings.resumeLastConversation) return@launch
+                val last = conversationRepository.mostRecentConversation()
+                if (last != null) {
+                    _uiState.update {
+                        it.copy(conversationId = last.id, title = last.title, selectedModel = last.model)
                     }
+                    attachConversation(last.id)
                 }
             }
-            observeMessages(initialConversationId)
         }
     }
 
@@ -93,19 +101,36 @@ class ChatViewModel(
                     observeMessages(conversationId)
                 }
 
-                _uiState.update { it.copy(isStreaming = true, streamingText = "") }
+                _uiState.update { it.copy(isStreaming = true, streamingText = "", streamingMessageId = null) }
                 chatRepository.streamAssistantReply(conversationId, text).collect { delta ->
                     _uiState.update {
                         it.copy(streamingText = (it.streamingText ?: "") + delta)
                     }
                 }
-                _uiState.update { it.copy(isStreaming = false, streamingText = null) }
+                // 流结束：AI 回复落库，但保留 streamingText，
+                // 等 UI 打字动画播完（onStreamingFinished）再切换到正式消息
+                val finalText = (_uiState.value.streamingText ?: "").ifBlank { "(无回复内容)" }
+                val savedId = conversationRepository.addMessage(
+                    conversationId, ChatRepository.ROLE_ASSISTANT, finalText
+                )
+                conversationRepository.touch(conversationId)
+                _uiState.update { it.copy(isStreaming = false, streamingMessageId = savedId) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isStreaming = false, streamingText = null, error = friendlyMessage(e))
+                    it.copy(
+                        isStreaming = false,
+                        streamingText = null,
+                        streamingMessageId = null,
+                        error = friendlyMessage(e)
+                    )
                 }
             }
         }
+    }
+
+    /** UI 打字动画播完时调用，切走流式气泡、显示正式消息。 */
+    fun onStreamingFinished() {
+        _uiState.update { it.copy(streamingText = null, streamingMessageId = null) }
     }
 
     fun onModelSelect(model: String) {
@@ -118,6 +143,19 @@ class ChatViewModel(
 
     fun onErrorShown() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    private fun attachConversation(conversationId: Long) {
+        viewModelScope.launch {
+            conversationRepository.observeConversation(conversationId).collect { conversation ->
+                if (conversation != null) {
+                    _uiState.update {
+                        it.copy(title = conversation.title, selectedModel = conversation.model)
+                    }
+                }
+            }
+        }
+        observeMessages(conversationId)
     }
 
     private fun observeMessages(conversationId: Long) {

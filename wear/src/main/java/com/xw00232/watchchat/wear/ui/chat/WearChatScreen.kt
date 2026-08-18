@@ -1,4 +1,4 @@
-﻿package com.xw00232.watchchat.wear.ui.chat
+package com.xw00232.watchchat.wear.ui.chat
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,7 +64,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -71,9 +71,33 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.watchchat.app.speech.SpeechRecognizerHelper
 import com.watchchat.app.ui.chat.ChatViewModel
 import com.watchchat.app.ui.chat.UiMessage
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val TYPEWRITER_TICK_MILLIS = 16L
+
+/** 打字机效果：返回当前应显示的字数，逐字追赶完整文本。
+ *  固定打字速度（与真实流式速度相当），超长文本温和加速避免拖太久；
+ *  文本全部显示且流已结束时回调 onFinished，由 ViewModel 切换到正式消息。 */
+@Composable
+private fun typewriterVisibleLength(
+    text: String,
+    isStreaming: Boolean,
+    onFinished: () -> Unit
+): Int {
+    var visible by remember { mutableIntStateOf(0) }
+    LaunchedEffect(text, isStreaming) {
+        while (visible < text.length) {
+            val step = maxOf(2, (text.length - visible) / 300)
+            visible = (visible + step).coerceAtMost(text.length)
+            delay(TYPEWRITER_TICK_MILLIS)
+        }
+        if (!isStreaming) onFinished()
+    }
+    return visible
+}
 
 /**
  * 手表端聊天页。
@@ -141,19 +165,12 @@ fun WearChatScreen(
             .safeDrawingPadding()
             .padding(horizontal = 6.dp)
     ) {
-        // 顶栏：标题 / 新对话 / 历史 / 设置
+        // 顶栏：仅功能按钮（新对话 / 历史 / 设置），不显示应用名或对话标题
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                uiState.title,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 13.sp,
-                color = Color.White
-            )
+            Spacer(Modifier.weight(1f))
             IconButton(onClick = onNewChat, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.Default.Add, contentDescription = "新对话", modifier = Modifier.size(16.dp), tint = Color.White)
             }
@@ -192,7 +209,8 @@ fun WearChatScreen(
 
         // 消息列表
         val listState = rememberLazyListState()
-        val messages = uiState.messages
+        // 打字动画期间隐藏已落库的对应 AI 消息，避免与流式气泡重复显示
+        val messages = uiState.messages.filterNot { it.id == uiState.streamingMessageId }
         val streamingText = uiState.streamingText
         val hasStreaming = streamingText != null
 
@@ -225,6 +243,8 @@ fun WearChatScreen(
                 item(key = "streaming") {
                     WearStreamingBubble(
                         text = streamingText.orEmpty(),
+                        isStreaming = uiState.isStreaming,
+                        onFinished = viewModel::onStreamingFinished,
                         onCopy = {
                             clipboard.setText(AnnotatedString(streamingText.orEmpty()))
                             Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
@@ -330,8 +350,13 @@ private fun WearMessageBubble(
 @Composable
 private fun WearStreamingBubble(
     text: String,
+    isStreaming: Boolean,
+    onFinished: () -> Unit,
     onCopy: () -> Unit
 ) {
+    val visibleLength = typewriterVisibleLength(text, isStreaming, onFinished)
+    val shownText = text.substring(0, visibleLength)
+
     val cursorSpec = infiniteRepeatable(
         animation = keyframes {
             durationMillis = 1000
@@ -358,7 +383,7 @@ private fun WearStreamingBubble(
             ) {
                 SelectionContainer {
                     Text(
-                        text = "$text▍",
+                        text = "$shownText▍",
                         modifier = Modifier
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                             .alpha(cursorAlpha),

@@ -1,4 +1,4 @@
-﻿package com.xw00232.watchchat.app.ui
+package com.xw00232.watchchat.app.ui
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -10,14 +10,15 @@ import com.watchchat.app.ui.settings.SettingsViewModel
 
 object AppViewModelProvider {
 
-    fun chatFactory(conversationId: Long?): ViewModelProvider.Factory = viewModelFactory {
+    fun chatFactory(conversationId: Long?, resumeLast: Boolean = true): ViewModelProvider.Factory = viewModelFactory {
         initializer {
             val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as WatchChatApp
             ChatViewModel(
                 settingsRepository = app.container.settingsRepository,
                 chatRepository = app.container.chatRepository,
                 conversationRepository = app.container.conversationRepository,
-                initialConversationId = conversationId
+                initialConversationId = conversationId,
+                resumeLast = resumeLast
             )
         }
     }

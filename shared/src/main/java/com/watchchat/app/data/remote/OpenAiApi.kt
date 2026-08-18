@@ -10,16 +10,22 @@ import retrofit2.http.Streaming
 
 /** 兼容 OpenAI Chat Completions 格式的接口（OpenAI / DeepSeek / 通义等）。 */
 interface OpenAiApi {
+    /**
+     * 流式请求必须声明 Accept: text/event-stream，
+     * 服务端才会以 SSE 格式（data: {...} 行）逐块返回。
+     */
     @Streaming
     @POST("chat/completions")
     suspend fun streamChat(
         @Header("Authorization") authorization: String,
+        @Header("Accept") accept: String,
         @Body body: ChatRequest
     ): Response<ResponseBody>
 
     @POST("chat/completions")
     suspend fun chat(
         @Header("Authorization") authorization: String,
+        @Header("Accept") accept: String,
         @Body body: ChatRequest
     ): Response<ChatCompletion>
 }

@@ -68,6 +68,7 @@ fun SettingsScreen(
     var models by remember { mutableStateOf(listOf<String>()) }
     var systemPrompt by remember { mutableStateOf("") }
     var streamEnabled by remember { mutableStateOf(true) }
+    var resumeLastConversation by remember { mutableStateOf(true) }
     var showKey by remember { mutableStateOf(false) }
     var newModel by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf(false) }
@@ -80,6 +81,7 @@ fun SettingsScreen(
         models = settings.models
         systemPrompt = settings.systemPrompt
         streamEnabled = settings.streamEnabled
+        resumeLastConversation = settings.resumeLastConversation
         ready = true
     }
 
@@ -160,12 +162,33 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("流式输出", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "如果接口不支持流式，请关闭",
+                        "AI 回复逐字显示；如果接口不支持流式，请关闭",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
                 }
                 Switch(checked = streamEnabled, onCheckedChange = { streamEnabled = it })
+            }
+
+            Spacer(Modifier.height(16.dp))
+            SectionTitle("通用")
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("打开时继续上次对话", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "启动 App 后自动加载最近一次对话；关闭则每次新建",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Switch(
+                    checked = resumeLastConversation,
+                    onCheckedChange = { resumeLastConversation = it }
+                )
             }
 
             Spacer(Modifier.height(16.dp))
@@ -269,7 +292,8 @@ fun SettingsScreen(
                             selectedModel = selectedModel,
                             models = models,
                             systemPrompt = systemPrompt,
-                            streamEnabled = streamEnabled
+                            streamEnabled = streamEnabled,
+                            resumeLastConversation = resumeLastConversation
                         ) { message -> scope.launch { snackbarHostState.showSnackbar(message) } }
                     }
                 },

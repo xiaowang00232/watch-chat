@@ -21,9 +21,12 @@ class ConversationRepository(
     suspend fun createConversation(title: String, model: String): Long =
         conversationDao.insert(ConversationEntity(title = title, model = model))
 
-    suspend fun addMessage(conversationId: Long, role: String, content: String) {
+    /** 最近更新的一条对话；没有对话时返回 null。 */
+    suspend fun mostRecentConversation(): ConversationEntity? = conversationDao.mostRecent()
+
+    /** 插入一条消息，返回新消息 id。 */
+    suspend fun addMessage(conversationId: Long, role: String, content: String): Long =
         messageDao.insert(MessageEntity(conversationId = conversationId, role = role, content = content))
-    }
 
     /** 返回按时间正序的最近消息（role, content）。 */
     suspend fun recentMessages(conversationId: Long, limit: Int): List<Pair<String, String>> =

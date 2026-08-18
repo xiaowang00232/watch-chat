@@ -35,7 +35,9 @@ data class AppSettings(
     val selectedModel: String = DEFAULT_MODELS.first(),
     val models: List<String> = DEFAULT_MODELS,
     val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
-    val streamEnabled: Boolean = false
+    val streamEnabled: Boolean = true,
+    /** 启动 App 时自动加载最近一次对话，而不是新建对话。 */
+    val resumeLastConversation: Boolean = true
 )
 
 /** 非敏感设置存 DataStore；API Key 经 Keystore 加密后再存 DataStore。 */
@@ -48,6 +50,7 @@ class SettingsRepository(private val context: Context) {
         val MODELS = stringPreferencesKey("models")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         val STREAM_ENABLED = booleanPreferencesKey("stream_enabled")
+        val RESUME_LAST_CONVERSATION = booleanPreferencesKey("resume_last_conversation")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -60,7 +63,8 @@ class SettingsRepository(private val context: Context) {
                 ?.takeIf { it.isNotEmpty() }
                 ?: DEFAULT_MODELS,
             systemPrompt = prefs[Keys.SYSTEM_PROMPT] ?: DEFAULT_SYSTEM_PROMPT,
-            streamEnabled = prefs[Keys.STREAM_ENABLED] ?: false
+            streamEnabled = prefs[Keys.STREAM_ENABLED] ?: true,
+            resumeLastConversation = prefs[Keys.RESUME_LAST_CONVERSATION] ?: true
         )
     }
 
@@ -87,7 +91,8 @@ class SettingsRepository(private val context: Context) {
         selectedModel: String,
         models: List<String>,
         systemPrompt: String,
-        streamEnabled: Boolean
+        streamEnabled: Boolean,
+        resumeLastConversation: Boolean
     ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.BASE_URL] = baseUrl.trim().trimEnd('/')
@@ -95,6 +100,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.MODELS] = models.filter { it.isNotBlank() }.distinct().joinToString("\n")
             prefs[Keys.SYSTEM_PROMPT] = systemPrompt.trim()
             prefs[Keys.STREAM_ENABLED] = streamEnabled
+            prefs[Keys.RESUME_LAST_CONVERSATION] = resumeLastConversation
         }
     }
 

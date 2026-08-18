@@ -27,11 +27,14 @@ class SettingsViewModel(
         models: List<String>,
         systemPrompt: String,
         streamEnabled: Boolean,
+        resumeLastConversation: Boolean,
         onDone: (String) -> Unit
     ) {
         viewModelScope.launch {
             settingsRepository.saveApiKey(apiKey)
-            settingsRepository.saveAll(baseUrl, selectedModel, models, systemPrompt, streamEnabled)
+            settingsRepository.saveAll(
+                baseUrl, selectedModel, models, systemPrompt, streamEnabled, resumeLastConversation
+            )
             onDone("设置已保存")
         }
     }
@@ -51,6 +54,7 @@ class SettingsViewModel(
                 val key = settingsRepository.currentApiKey().orEmpty()
                 val response = api.chat(
                     "Bearer $key",
+                    "application/json",
                     ChatRequest(
                         model = selectedModel,
                         messages = listOf(ChatMessage("user", "ping")),

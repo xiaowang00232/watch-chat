@@ -1,4 +1,4 @@
-﻿package com.xw00232.watchchat.app.ui
+package com.xw00232.watchchat.app.ui
 
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -20,15 +20,19 @@ fun AppNavHost(container: AppContainer) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = "chat") {
-        composable("chat") {
-            val viewModel: ChatViewModel = viewModel(factory = AppViewModelProvider.chatFactory(null))
+        composable(
+            route = "chat?resume={resume}",
+            arguments = listOf(navArgument("resume") { type = NavType.BoolType; defaultValue = true })
+        ) { entry ->
+            val resumeLast = entry.arguments?.getBoolean("resume") ?: true
+            val viewModel: ChatViewModel = viewModel(factory = AppViewModelProvider.chatFactory(null, resumeLast))
             ChatScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
                 onOpenHistory = { navController.navigate("history") },
                 onOpenSettings = { navController.navigate("settings") },
                 onNewChat = {
-                    navController.navigate("chat") {
+                    navController.navigate("chat?resume=false") {
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -49,7 +53,7 @@ fun AppNavHost(container: AppContainer) {
                 onOpenHistory = { navController.navigate("history") },
                 onOpenSettings = { navController.navigate("settings") },
                 onNewChat = {
-                    navController.navigate("chat") {
+                    navController.navigate("chat?resume=false") {
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }

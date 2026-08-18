@@ -64,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -84,10 +85,34 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.watchchat.app.speech.SpeechRecognizerHelper
 import com.watchchat.app.ui.chat.ChatViewModel
 import com.watchchat.app.ui.chat.UiMessage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val TYPEWRITER_TICK_MILLIS = 16L
+
+/** 打字机效果：返回当前应显示的字数，逐字追赶完整文本。
+ *  固定打字速度（与真实流式速度相当），超长文本温和加速避免拖太久；
+ *  文本全部显示且流已结束时回调 onFinished，由 ViewModel 切换到正式消息。 */
+@Composable
+private fun typewriterVisibleLength(
+    text: String,
+    isStreaming: Boolean,
+    onFinished: () -> Unit
+): Int {
+    var visible by remember { mutableIntStateOf(0) }
+    LaunchedEffect(text, isStreaming) {
+        while (visible < text.length) {
+            val step = maxOf(2, (text.length - visible) / 300)
+            visible = (visible + step).coerceAtMost(text.length)
+            delay(TYPEWRITER_TICK_MILLIS)
+        }
+        if (!isStreaming) onFinished()
+    }
+    return visible
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -241,7 +266,8 @@ fun ChatScreen(
         }
     ) { padding ->
         val listState = rememberLazyListState()
-        val messages = uiState.messages
+        // 打字动画期间隐藏已落库的对应 AI 消息，避免与流式气泡重复显示
+        val messages = uiState.messages.filterNot { it.id == uiState.streamingMessageId }
         val streamingText = uiState.streamingText
         val hasStreaming = streamingText != null
 
@@ -277,7 +303,8 @@ fun ChatScreen(
                 item(key = "streaming") {
                     AssistantBubble(
                         text = streamingText.orEmpty(),
-                        isStreaming = true,
+                        isStreaming = uiState.isStreaming,
+                        onFinished = viewModel::onStreamingFinished,
                         onCopy = {
                             clipboard.setText(AnnotatedString(streamingText.orEmpty()))
                             showCopiedToast()
@@ -423,8 +450,12 @@ private fun MessageBubble(
 private fun AssistantBubble(
     text: String,
     isStreaming: Boolean,
+    onFinished: () -> Unit,
     onCopy: () -> Unit
 ) {
+    val visibleLength = typewriterVisibleLength(text, isStreaming, onFinished)
+    val shownText = text.substring(0, visibleLength)
+
     val cursorSpec = infiniteRepeatable(
         animation = keyframes {
             durationMillis = 1000
@@ -450,7 +481,7 @@ private fun AssistantBubble(
             ) {
                 SelectionContainer {
                     Text(
-                        text = if (isStreaming) "$text▍" else text,
+                        text = if (isStreaming) "$shownText▍" else shownText,
                         modifier = Modifier
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                             .alpha(if (isStreaming) cursorAlpha else 1f),

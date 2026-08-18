@@ -8,8 +8,10 @@ import com.watchchat.app.data.remote.ChatRequest
 import com.watchchat.app.data.remote.OpenAiApi
 import com.watchchat.app.data.remote.OpenAiService
 import com.watchchat.app.data.settings.SettingsRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import retrofit2.Response
 import java.io.IOException
 
@@ -17,7 +19,8 @@ import java.io.IOException
  * 对话业务核心：
  * 1. 把用户消息写入本地数据库（记忆）
  * 2. 取最近 CONTEXT_MESSAGE_LIMIT 条消息作为上下文发给模型
- * 3. 流式接收回复并逐字下发，结束后写入本地数据库
+ * 3. 流式接收回复并逐字下发（网络读取在 IO 线程，避免阻塞主线程导致"整段生成完才显示"）
+ * 4. 回复由 ViewModel 落库，以便 UI 打字动画播完后再切换到正式消息
  */
 class ChatRepository(
     private val conversationRepository: ConversationRepository,
@@ -45,29 +48,18 @@ class ChatRepository(
         val api = OpenAiService.create(settings.baseUrl)
         val auth = "Bearer ${settingsRepository.currentApiKey().orEmpty()}"
 
-        val reply = if (settings.streamEnabled) {
+        if (settings.streamEnabled) {
             val streamed = streamFromApi(api, auth, request) { chunk -> emit(chunk) }
             // 流式未返回任何正文内容时，回退到非流式请求，避免"无回复"
             if (streamed.isBlank()) {
                 val text = requestFromApi(api, auth, request.copy(stream = false))
                 emit(text)
-                text
-            } else {
-                streamed
             }
         } else {
             val text = requestFromApi(api, auth, request)
             emit(text)
-            text
         }
-
-        conversationRepository.addMessage(
-            conversationId,
-            ROLE_ASSISTANT,
-            reply.ifBlank { "(无回复内容)" }
-        )
-        conversationRepository.touch(conversationId)
-    }
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun streamFromApi(
         api: OpenAiApi,
@@ -75,7 +67,7 @@ class ChatRepository(
         request: ChatRequest,
         onChunk: suspend (String) -> Unit
     ): String {
-        val response = api.streamChat(auth, request)
+        val response = api.streamChat(auth, ACCEPT_STREAM, request)
         if (!response.isSuccessful) throw httpException(response)
         val body = response.body() ?: throw IOException("响应为空")
         val source = body.source()
@@ -123,7 +115,7 @@ class ChatRepository(
         auth: String,
         request: ChatRequest
     ): String {
-        val response = api.chat(auth, request)
+        val response = api.chat(auth, ACCEPT_JSON, request)
         if (!response.isSuccessful) throw httpException(response)
         val body = response.body()
         body?.error?.let { throw IOException("服务返回错误：${it.message ?: it.type}") }
@@ -145,5 +137,11 @@ class ChatRepository(
         const val ROLE_ASSISTANT = "assistant"
         const val ROLE_SYSTEM = "system"
         const val CONTEXT_MESSAGE_LIMIT = 20
+
+        /** 流式请求头：要求服务端按 SSE 逐块返回。 */
+        const val ACCEPT_STREAM = "text/event-stream"
+
+        /** 非流式请求头。 */
+        const val ACCEPT_JSON = "application/json"
     }
 }

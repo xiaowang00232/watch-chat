@@ -19,6 +19,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getById(id: Long): ConversationEntity?
 
+    /** 最近更新的一条对话（打开 App 续接用）。 */
+    @Query("SELECT * FROM conversations ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun mostRecent(): ConversationEntity?
+
     @Insert
     suspend fun insert(conversation: ConversationEntity): Long
 
