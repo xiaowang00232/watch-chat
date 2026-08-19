@@ -5,11 +5,6 @@ import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +26,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
@@ -57,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -76,10 +69,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private const val TYPEWRITER_TICK_MILLIS = 16L
+private const val TYPEWRITER_TICK_MILLIS = 24L
 
 /** 打字机效果：返回当前应显示的字数，逐字追赶完整文本。
- *  固定打字速度（与真实流式速度相当），超长文本温和加速避免拖太久；
+ *  手表端采用较低刷新频率（约 40fps）减少重组开销；
  *  文本全部显示且流已结束时回调 onFinished，由 ViewModel 切换到正式消息。 */
 @Composable
 private fun typewriterVisibleLength(
@@ -90,7 +83,7 @@ private fun typewriterVisibleLength(
     var visible by remember { mutableIntStateOf(0) }
     LaunchedEffect(text, isStreaming) {
         while (visible < text.length) {
-            val step = maxOf(2, (text.length - visible) / 300)
+            val step = maxOf(3, (text.length - visible) / 150)
             visible = (visible + step).coerceAtMost(text.length)
             delay(TYPEWRITER_TICK_MILLIS)
         }
@@ -214,9 +207,14 @@ fun WearChatScreen(
         val streamingText = uiState.streamingText
         val hasStreaming = streamingText != null
 
+        // 就近自动滚动：仅当接近底部时用即时滚动（无动画）跟随新消息，
+        // 避免流式期间持续动画滚动导致手表卡顿，也不打断向上翻阅历史
         LaunchedEffect(messages.size, streamingText) {
             val count = messages.size + if (hasStreaming) 1 else 0
-            if (count > 0) listState.animateScrollToItem(count - 1)
+            if (count == 0) return@LaunchedEffect
+            delay(50)
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            if (lastVisible >= count - 3) listState.scrollToItem(count - 1)
         }
 
         LazyColumn(
@@ -315,15 +313,13 @@ private fun WearMessageBubble(
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (isUser) Color(0xFF2B5BA8) else Color(0xFF232A33))
             ) {
-                SelectionContainer {
-                    Text(
-                        text = message.content,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        color = Color.White
-                    )
-                }
+                Text(
+                    text = message.content,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = Color.White
+                )
             }
             Row(
                 modifier = Modifier.align(if (isUser) Alignment.End else Alignment.Start),
@@ -357,23 +353,6 @@ private fun WearStreamingBubble(
     val visibleLength = typewriterVisibleLength(text, isStreaming, onFinished)
     val shownText = text.substring(0, visibleLength)
 
-    val cursorSpec = infiniteRepeatable(
-        animation = keyframes {
-            durationMillis = 1000
-            0.2f at 0
-            1f at 500
-            0.2f at 1000
-        },
-        repeatMode = RepeatMode.Reverse
-    )
-    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
-    val cursorAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 1f,
-        animationSpec = cursorSpec,
-        label = "cursorAlpha"
-    )
-
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
         Column(modifier = Modifier.fillMaxWidth(0.88f)) {
             Box(
@@ -381,17 +360,13 @@ private fun WearStreamingBubble(
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF232A33))
             ) {
-                SelectionContainer {
-                    Text(
-                        text = "$shownText▍",
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                            .alpha(cursorAlpha),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        color = Color.White
-                    )
-                }
+                Text(
+                    text = "$shownText▍",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = Color.White
+                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("AI", fontSize = 9.sp, color = Color(0xFF9AA0A6))

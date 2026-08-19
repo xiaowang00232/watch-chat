@@ -13,6 +13,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<ConversationEntity>>
 
+    /** 全量对话（导出用）。 */
+    @Query("SELECT * FROM conversations")
+    suspend fun getAll(): List<ConversationEntity>
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     fun observeById(id: Long): Flow<ConversationEntity?>
 

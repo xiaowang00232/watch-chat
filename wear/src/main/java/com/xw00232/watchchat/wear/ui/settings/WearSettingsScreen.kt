@@ -1,9 +1,12 @@
 package com.xw00232.watchchat.wear.ui.settings
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,11 +22,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -37,17 +43,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.watchchat.app.data.settings.BUILT_IN_BASE_URLS
+import com.watchchat.app.data.settings.ProviderConfig
 import com.watchchat.app.ui.settings.SettingsViewModel
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun WearSettingsScreen(
@@ -55,6 +67,7 @@ fun WearSettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var ready by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("") }
@@ -63,9 +76,47 @@ fun WearSettingsScreen(
     var systemPrompt by remember { mutableStateOf("") }
     var streamEnabled by remember { mutableStateOf(true) }
     var resumeLastConversation by remember { mutableStateOf(true) }
+    var providers by remember { mutableStateOf(mapOf<String, ProviderConfig>()) }
     var newModel by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+
+    // 每模型配置弹窗
+    var editingModel by remember { mutableStateOf<String?>(null) }
+    var editBaseUrl by remember { mutableStateOf("") }
+    var editApiKey by remember { mutableStateOf("") }
+
+    // 导出/导入
+    var exportMenuExpanded by remember { mutableStateOf(false) }
+    var exportIncludeSettings by remember { mutableStateOf(false) }
+
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val json = viewModel.exportJson(exportIncludeSettings)
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                }
+                toast("已导出备份")
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val text = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                toast(viewModel.importJson(text))
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val settings = viewModel.loadSettings()
@@ -76,10 +127,9 @@ fun WearSettingsScreen(
         systemPrompt = settings.systemPrompt
         streamEnabled = settings.streamEnabled
         resumeLastConversation = settings.resumeLastConversation
+        providers = settings.providers
         ready = true
     }
-
-    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
     Box(
         modifier = Modifier
@@ -123,8 +173,99 @@ fun WearSettingsScreen(
                 )
             }
 
-            WearSectionLabel("服务配置")
-            WearLabel("Base URL")
+            WearSectionLabel("模型管理")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "默认: ${selectedModel.ifBlank { "未选" }}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF9AA0A6),
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = { newModel = ""; showAddDialog = true },
+                    modifier = Modifier.height(26.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1A73E8),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("添加", fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            models.forEach { model ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = model,
+                        fontSize = 11.sp,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            editingModel = model
+                            val saved = providers[model]
+                            editBaseUrl = saved?.baseUrl ?: BUILT_IN_BASE_URLS[model] ?: baseUrl
+                            editApiKey = saved?.apiKey.orEmpty()
+                        },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "配置",
+                            modifier = Modifier.size(13.dp),
+                            tint = Color(0xFF9AA0A6)
+                        )
+                    }
+                    IconButton(
+                        onClick = { selectedModel = model; toast("已设为默认: $model") },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "设为默认",
+                            modifier = Modifier.size(13.dp),
+                            tint = if (model == selectedModel) Color(0xFF1A73E8) else Color(0xFF9AA0A6)
+                        )
+                    }
+                    if (models.size > 1) {
+                        IconButton(
+                            onClick = {
+                                val updated = models - model
+                                models = updated
+                                providers = providers - model
+                                if (selectedModel == model) selectedModel = updated.firstOrNull().orEmpty()
+                                toast("已删除 $model")
+                            },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "删除",
+                                modifier = Modifier.size(13.dp),
+                                tint = Color(0xFFF28B82)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            WearSectionLabel("默认服务配置")
+            WearLabel("Base URL（未单独配置的模型使用）")
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it },
@@ -197,80 +338,6 @@ fun WearSettingsScreen(
                 )
             }
 
-            Spacer(Modifier.height(6.dp))
-            WearSectionLabel("模型管理")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "默认: ${selectedModel.ifBlank { "未选" }}",
-                    fontSize = 10.sp,
-                    color = Color(0xFF9AA0A6),
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = { newModel = ""; showAddDialog = true },
-                    modifier = Modifier.height(26.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A73E8),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("添加", fontSize = 10.sp)
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            models.forEach { model ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = model,
-                        fontSize = 11.sp,
-                        color = Color.White,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { selectedModel = model; toast("已设为默认: $model") },
-                        modifier = Modifier.size(26.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "设为默认",
-                            modifier = Modifier.size(13.dp),
-                            tint = if (model == selectedModel) Color(0xFF1A73E8) else Color(0xFF9AA0A6)
-                        )
-                    }
-                    if (models.size > 1) {
-                        IconButton(
-                            onClick = {
-                                val updated = models - model
-                                models = updated
-                                if (selectedModel == model) selectedModel = updated.firstOrNull().orEmpty()
-                                toast("已删除 $model")
-                            },
-                            modifier = Modifier.size(26.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "删除",
-                                modifier = Modifier.size(13.dp),
-                                tint = Color(0xFFF28B82)
-                            )
-                        }
-                    }
-                }
-            }
-
             Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -279,7 +346,7 @@ fun WearSettingsScreen(
                 Button(
                     onClick = {
                         when {
-                            baseUrl.isBlank() -> toast("请填写 Base URL")
+                            baseUrl.isBlank() -> toast("请填写默认 Base URL")
                             selectedModel.isBlank() -> toast("请至少保留一个模型")
                             else -> viewModel.save(
                                 apiKey = apiKey,
@@ -288,7 +355,8 @@ fun WearSettingsScreen(
                                 models = models,
                                 systemPrompt = systemPrompt,
                                 streamEnabled = streamEnabled,
-                                resumeLastConversation = resumeLastConversation
+                                resumeLastConversation = resumeLastConversation,
+                                providers = providers
                             ) { message -> toast(message) }
                         }
                     },
@@ -300,7 +368,7 @@ fun WearSettingsScreen(
                 ) { Text("保存", fontSize = 10.sp) }
                 Button(
                     onClick = {
-                        if (baseUrl.isBlank()) toast("请先填写 Base URL")
+                        if (baseUrl.isBlank()) toast("请先填写默认 Base URL")
                         else viewModel.testConnection(apiKey, baseUrl, selectedModel) { message -> toast(message) }
                     },
                     modifier = Modifier.weight(1f),
@@ -320,12 +388,106 @@ fun WearSettingsScreen(
             }
 
             Spacer(Modifier.height(6.dp))
+            WearSectionLabel("数据管理")
+            Button(
+                onClick = { exportMenuExpanded = true },
+                modifier = Modifier.fillMaxWidth().height(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF232A33),
+                    contentColor = Color.White
+                )
+            ) { Text("导出对话", fontSize = 10.sp) }
+            DropdownMenu(
+                expanded = exportMenuExpanded,
+                onDismissRequest = { exportMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("仅导出对话", fontSize = 11.sp) },
+                    onClick = {
+                        exportMenuExpanded = false
+                        exportIncludeSettings = false
+                        exportLauncher.launch("watchchat-chats-${timestamp()}.json")
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("导出对话和设置", fontSize = 11.sp) },
+                    onClick = {
+                        exportMenuExpanded = false
+                        exportIncludeSettings = true
+                        exportLauncher.launch("watchchat-full-${timestamp()}.json")
+                    }
+                )
+            }
+            Button(
+                onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                modifier = Modifier.fillMaxWidth().height(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF232A33),
+                    contentColor = Color.White
+                )
+            ) { Text("导入对话", fontSize = 10.sp) }
+
+            Spacer(Modifier.height(6.dp))
             TextButton(
                 onClick = { showClearDialog = true },
                 modifier = Modifier.fillMaxWidth().height(28.dp)
             ) { Text("清空所有对话", color = Color(0xFFF28B82), fontSize = 10.sp) }
             Spacer(Modifier.height(20.dp))
         }
+    }
+
+    if (editingModel != null) {
+        AlertDialog(
+            containerColor = Color(0xFF1F232B),
+            onDismissRequest = { editingModel = null },
+            title = { Text("配置 ${editingModel}", color = Color.White, fontSize = 13.sp) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editBaseUrl,
+                        onValueChange = { editBaseUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Base URL", fontSize = 10.sp, color = Color(0xFF9AA0A6)) },
+                        placeholder = { Text("https://...", fontSize = 10.sp, color = Color(0xFF6F767E)) },
+                        textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                        colors = wearTfColors()
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = editApiKey,
+                        onValueChange = { editApiKey = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("API Key（可选）", fontSize = 10.sp, color = Color(0xFF9AA0A6)) },
+                        placeholder = { Text("留空用默认 Key", fontSize = 10.sp, color = Color(0xFF6F767E)) },
+                        textStyle = TextStyle(color = Color.White, fontSize = 11.sp),
+                        colors = wearTfColors()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val model = editingModel
+                    if (model != null) {
+                        val cfg = ProviderConfig(editBaseUrl.trim(), editApiKey.trim())
+                        providers = if (cfg.baseUrl.isBlank() && cfg.apiKey.isBlank()) {
+                            providers - model
+                        } else {
+                            providers + (model to cfg)
+                        }
+                    }
+                    editingModel = null
+                }) {
+                    Text("保存", color = Color(0xFF1A73E8), fontSize = 11.sp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingModel = null }) {
+                    Text("取消", color = Color(0xFF9AA0A6), fontSize = 11.sp)
+                }
+            }
+        )
     }
 
     if (showAddDialog) {
@@ -418,3 +580,6 @@ private fun WearLabel(text: String) {
         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
     )
 }
+
+private fun timestamp(): String =
+    SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())

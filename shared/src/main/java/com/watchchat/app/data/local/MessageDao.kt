@@ -11,6 +11,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     fun observeByConversation(conversationId: Long): Flow<List<MessageEntity>>
 
+    /** 某个对话的全部消息（导出用）。 */
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
+    suspend fun getAllByConversation(conversationId: Long): List<MessageEntity>
+
     /** 返回最近 limit 条（倒序），由调用方再反转。 */
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC, id DESC LIMIT :limit")
     suspend fun recentDesc(conversationId: Long, limit: Int): List<MessageEntity>

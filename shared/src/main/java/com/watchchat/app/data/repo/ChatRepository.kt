@@ -7,6 +7,7 @@ import com.watchchat.app.data.remote.ChatMessage
 import com.watchchat.app.data.remote.ChatRequest
 import com.watchchat.app.data.remote.OpenAiApi
 import com.watchchat.app.data.remote.OpenAiService
+import com.watchchat.app.data.settings.BUILT_IN_BASE_URLS
 import com.watchchat.app.data.settings.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -45,8 +46,18 @@ class ChatRepository(
             stream = settings.streamEnabled
         )
 
-        val api = OpenAiService.create(settings.baseUrl)
-        val auth = "Bearer ${settingsRepository.currentApiKey().orEmpty()}"
+        // 多服务商：按所选模型解析服务地址与 Key（每模型配置 → 内置地址 → 全局默认）
+        val model = settings.selectedModel
+        val provider = settings.providers[model]
+        val baseUrl = provider?.baseUrl?.takeIf { it.isNotBlank() }
+            ?: BUILT_IN_BASE_URLS[model]
+            ?: settings.baseUrl
+            ?: throw IOException("未配置服务地址，请到设置中填写 Base URL")
+        val apiKey = provider?.apiKey?.takeIf { it.isNotBlank() }
+            ?: settingsRepository.currentApiKey().orEmpty()
+
+        val api = OpenAiService.create(baseUrl)
+        val auth = "Bearer $apiKey"
 
         if (settings.streamEnabled) {
             val streamed = streamFromApi(api, auth, request) { chunk -> emit(chunk) }

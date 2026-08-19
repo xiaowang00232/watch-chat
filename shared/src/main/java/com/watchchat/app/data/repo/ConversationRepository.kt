@@ -1,6 +1,8 @@
 // 共享模块：手机端与手表端共用
 package com.watchchat.app.data.repo
 
+import com.watchchat.app.data.export.ExportConversation
+import com.watchchat.app.data.export.ExportMessage
 import com.watchchat.app.data.local.ConversationDao
 import com.watchchat.app.data.local.ConversationEntity
 import com.watchchat.app.data.local.MessageDao
@@ -47,4 +49,43 @@ class ConversationRepository(
     suspend fun deleteConversation(id: Long) = conversationDao.deleteById(id)
 
     suspend fun clearAll() = conversationDao.deleteAll()
+
+    /** 导出全部对话（含消息），按时间正序。 */
+    suspend fun exportConversations(): List<ExportConversation> =
+        conversationDao.getAll().map { conv ->
+            ExportConversation(
+                title = conv.title,
+                model = conv.model,
+                createdAt = conv.createdAt,
+                updatedAt = conv.updatedAt,
+                messages = messageDao.getAllByConversation(conv.id).map { msg ->
+                    ExportMessage(role = msg.role, content = msg.content, createdAt = msg.createdAt)
+                }
+            )
+        }
+
+    /** 批量导入对话（追加到现有数据），返回导入的对话数。 */
+    suspend fun importConversations(list: List<ExportConversation>): Int {
+        list.forEach { conv ->
+            val id = conversationDao.insert(
+                ConversationEntity(
+                    title = conv.title,
+                    model = conv.model,
+                    createdAt = conv.createdAt,
+                    updatedAt = conv.updatedAt
+                )
+            )
+            conv.messages.forEach { msg ->
+                messageDao.insert(
+                    MessageEntity(
+                        conversationId = id,
+                        role = msg.role,
+                        content = msg.content,
+                        createdAt = msg.createdAt
+                    )
+                )
+            }
+        }
+        return list.size
+    }
 }

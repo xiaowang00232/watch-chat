@@ -1,5 +1,7 @@
 package com.xw00232.watchchat.app.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,10 +18,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -45,12 +49,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.watchchat.app.data.settings.BUILT_IN_BASE_URLS
+import com.watchchat.app.data.settings.ProviderConfig
 import com.watchchat.app.ui.settings.SettingsViewModel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +70,7 @@ fun SettingsScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var ready by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
@@ -69,9 +80,46 @@ fun SettingsScreen(
     var systemPrompt by remember { mutableStateOf("") }
     var streamEnabled by remember { mutableStateOf(true) }
     var resumeLastConversation by remember { mutableStateOf(true) }
+    var providers by remember { mutableStateOf(mapOf<String, ProviderConfig>()) }
     var showKey by remember { mutableStateOf(false) }
     var newModel by remember { mutableStateOf("") }
     var showClearDialog by remember { mutableStateOf(false) }
+
+    // 每模型配置弹窗
+    var editingModel by remember { mutableStateOf<String?>(null) }
+    var editBaseUrl by remember { mutableStateOf("") }
+    var editApiKey by remember { mutableStateOf("") }
+
+    // 导出/导入
+    var exportMenuExpanded by remember { mutableStateOf(false) }
+    var exportIncludeSettings by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val json = viewModel.exportJson(exportIncludeSettings)
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                }
+                snackbarHostState.showSnackbar("已导出备份文件")
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val text = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val msg = viewModel.importJson(text)
+                snackbarHostState.showSnackbar(msg)
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val settings = viewModel.loadSettings()
@@ -82,6 +130,7 @@ fun SettingsScreen(
         systemPrompt = settings.systemPrompt
         streamEnabled = settings.streamEnabled
         resumeLastConversation = settings.resumeLastConversation
+        providers = settings.providers
         ready = true
     }
 
@@ -117,82 +166,12 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            SectionTitle("服务配置")
-
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("API Key") },
-                placeholder = { Text("sk-...") },
-                singleLine = true,
-                visualTransformation = if (showKey) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    IconButton(onClick = { showKey = !showKey }) {
-                        Icon(
-                            if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showKey) "隐藏 Key" else "显示 Key"
-                        )
-                    }
-                }
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Base URL") },
-                placeholder = { Text("https://api.openai.com/v1") },
-                singleLine = true
-            )
-            Text(
-                "支持任何 OpenAI 兼容接口，如 DeepSeek（https://api.deepseek.com/v1）、Ollama 本地等",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("流式输出", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "AI 回复逐字显示；如果接口不支持流式，请关闭",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-                Switch(checked = streamEnabled, onCheckedChange = { streamEnabled = it })
-            }
-
-            Spacer(Modifier.height(16.dp))
-            SectionTitle("通用")
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("打开时继续上次对话", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "启动 App 后自动加载最近一次对话；关闭则每次新建",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-                Switch(
-                    checked = resumeLastConversation,
-                    onCheckedChange = { resumeLastConversation = it }
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
             SectionTitle("模型管理")
+            Text(
+                "点 ✎ 可为模型单独配置服务地址与 Key，切换模型时自动使用",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -222,8 +201,27 @@ fun SettingsScreen(
                     )
                     IconButton(
                         onClick = {
+                            editingModel = model
+                            val saved = providers[model]
+                            editBaseUrl = saved?.baseUrl
+                                ?: BUILT_IN_BASE_URLS[model]
+                                ?: baseUrl
+                            editApiKey = saved?.apiKey.orEmpty()
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "配置 $model",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    IconButton(
+                        onClick = {
                             val updated = models - model
                             models = updated
+                            providers = providers - model
                             if (selectedModel == model) {
                                 selectedModel = updated.firstOrNull().orEmpty()
                             }
@@ -266,6 +264,80 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(16.dp))
+            SectionTitle("默认服务配置")
+            Text(
+                "未单独配置的模型使用此地址与 Key；已知模型会自动匹配内置服务商地址",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("API Key") },
+                placeholder = { Text("sk-...") },
+                singleLine = true,
+                visualTransformation = if (showKey) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { showKey = !showKey }) {
+                        Icon(
+                            if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (showKey) "隐藏 Key" else "显示 Key"
+                        )
+                    }
+                }
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Base URL") },
+                placeholder = { Text("https://api.openai.com/v1") },
+                singleLine = true
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("流式输出", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "AI 回复逐字显示；如果接口不支持流式，请关闭",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Switch(checked = streamEnabled, onCheckedChange = { streamEnabled = it })
+            }
+
+            Spacer(Modifier.height(16.dp))
+            SectionTitle("通用")
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("打开时继续上次对话", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "启动 App 后自动加载最近一次对话；关闭则每次新建",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Switch(
+                    checked = resumeLastConversation,
+                    onCheckedChange = { resumeLastConversation = it }
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
             SectionTitle("高级")
             OutlinedTextField(
                 value = systemPrompt,
@@ -281,7 +353,7 @@ fun SettingsScreen(
                 onClick = {
                     when {
                         baseUrl.isBlank() -> scope.launch {
-                            snackbarHostState.showSnackbar("请填写 Base URL")
+                            snackbarHostState.showSnackbar("请填写默认 Base URL")
                         }
                         selectedModel.isBlank() -> scope.launch {
                             snackbarHostState.showSnackbar("请至少保留一个模型")
@@ -293,7 +365,8 @@ fun SettingsScreen(
                             models = models,
                             systemPrompt = systemPrompt,
                             streamEnabled = streamEnabled,
-                            resumeLastConversation = resumeLastConversation
+                            resumeLastConversation = resumeLastConversation,
+                            providers = providers
                         ) { message -> scope.launch { snackbarHostState.showSnackbar(message) } }
                     }
                 },
@@ -303,7 +376,7 @@ fun SettingsScreen(
             TextButton(
                 onClick = {
                     if (baseUrl.isBlank()) {
-                        scope.launch { snackbarHostState.showSnackbar("请先填写 Base URL") }
+                        scope.launch { snackbarHostState.showSnackbar("请先填写默认 Base URL") }
                     } else {
                         viewModel.testConnection(
                             apiKey = apiKey,
@@ -316,15 +389,102 @@ fun SettingsScreen(
             ) { Text("测试连接") }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            SectionTitle("数据管理")
+
+            TextButton(
+                onClick = { exportMenuExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("导出对话")
+                Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(
+                expanded = exportMenuExpanded,
+                onDismissRequest = { exportMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("仅导出对话") },
+                    onClick = {
+                        exportMenuExpanded = false
+                        exportIncludeSettings = false
+                        exportLauncher.launch("watchchat-chats-${timestamp()}.json")
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("导出对话和设置") },
+                    onClick = {
+                        exportMenuExpanded = false
+                        exportIncludeSettings = true
+                        exportLauncher.launch("watchchat-full-${timestamp()}.json")
+                    }
+                )
+            }
+            TextButton(
+                onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("导入对话") }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             TextButton(
                 onClick = { showClearDialog = true },
                 modifier = Modifier.fillMaxWidth(),
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.error
                 )
             ) { Text("清空所有对话") }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (editingModel != null) {
+        AlertDialog(
+            onDismissRequest = { editingModel = null },
+            title = { Text("配置模型：${editingModel}") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editBaseUrl,
+                        onValueChange = { editBaseUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Base URL") },
+                        placeholder = { Text("https://...") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = editApiKey,
+                        onValueChange = { editApiKey = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("API Key（可选）") },
+                        placeholder = { Text("留空使用默认 Key") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "地址留空则使用内置服务商地址或默认配置；两项都留空则恢复默认",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val model = editingModel
+                    if (model != null) {
+                        val cfg = ProviderConfig(editBaseUrl.trim(), editApiKey.trim())
+                        providers = if (cfg.baseUrl.isBlank() && cfg.apiKey.isBlank()) {
+                            providers - model
+                        } else {
+                            providers + (model to cfg)
+                        }
+                    }
+                    editingModel = null
+                }) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingModel = null }) { Text("取消") }
+            }
+        )
     }
 
     if (showClearDialog) {
@@ -393,3 +553,6 @@ private fun ModelDropdown(
         }
     }
 }
+
+private fun timestamp(): String =
+    SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())

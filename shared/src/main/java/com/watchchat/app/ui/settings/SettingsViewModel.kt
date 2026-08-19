@@ -3,13 +3,18 @@ package com.watchchat.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.watchchat.app.data.export.ChatExporter
+import com.watchchat.app.data.export.ExportData
 import com.watchchat.app.data.remote.ChatMessage
 import com.watchchat.app.data.remote.ChatRequest
 import com.watchchat.app.data.remote.OpenAiService
 import com.watchchat.app.data.repo.ConversationRepository
 import com.watchchat.app.data.settings.AppSettings
+import com.watchchat.app.data.settings.ProviderConfig
 import com.watchchat.app.data.settings.SettingsRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
@@ -28,14 +33,41 @@ class SettingsViewModel(
         systemPrompt: String,
         streamEnabled: Boolean,
         resumeLastConversation: Boolean,
+        providers: Map<String, ProviderConfig>,
         onDone: (String) -> Unit
     ) {
         viewModelScope.launch {
             settingsRepository.saveApiKey(apiKey)
             settingsRepository.saveAll(
-                baseUrl, selectedModel, models, systemPrompt, streamEnabled, resumeLastConversation
+                baseUrl, selectedModel, models, systemPrompt, streamEnabled,
+                resumeLastConversation, providers
             )
             onDone("设置已保存")
+        }
+    }
+
+    /** 生成备份 JSON：includeSettings=true 时附带设置（Key 为加密值）。 */
+    suspend fun exportJson(includeSettings: Boolean): String = withContext(Dispatchers.IO) {
+        val conversations = conversationRepository.exportConversations()
+        val settings = if (includeSettings) settingsRepository.exportSettings() else null
+        ChatExporter.encode(
+            ExportData(conversations = conversations, settings = settings)
+        )
+    }
+
+    /** 解析并导入备份 JSON（对话 + 可选设置），返回结果提示。 */
+    suspend fun importJson(json: String): String = withContext(Dispatchers.IO) {
+        val data = try {
+            ChatExporter.decode(json)
+        } catch (e: Exception) {
+            return@withContext "导入失败：文件格式错误或版本不支持"
+        }
+        val count = conversationRepository.importConversations(data.conversations)
+        data.settings?.let { settingsRepository.importSettings(it) }
+        if (data.settings != null) {
+            "已导入 $count 个对话及设置"
+        } else {
+            "已导入 $count 个对话"
         }
     }
 

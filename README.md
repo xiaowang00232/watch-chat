@@ -10,6 +10,8 @@
 
 - **自带 API Key**：在设置页粘贴任意 OpenAI 兼容接口的 Key，经 Android Keystore 加密后本地存储，不上传任何服务器。
 - **多模型切换**：内置常用模型列表，默认 `deepseek-v4-flash`；聊天页顶部可即时切换，每个对话记住当时使用的模型。
+- **多服务商并存**：每个模型可单独配置 Base URL 与 API Key，切换模型自动使用对应服务商的配置；内置 DeepSeek / OpenAI / 通义 / GLM / Kimi / 小米 MiMo 服务商地址，未单独配置的模型回退默认服务配置。
+- **导入 / 导出对话**：设置页可导出备份（仅对话，或对话 + 设置）为 JSON 文件，也可导入恢复；手机端与手表端均支持。
 - **复制**：每条消息下方有复制按钮，一键复制到剪贴板；长按消息文本也可系统选中复制。
 - **记忆对话**：
   - 本地存储：所有对话保存在本地 Room 数据库，历史页可随时回看、继续、删除。
@@ -42,7 +44,7 @@
 | 续接上次对话 | 开启（启动自动加载最近对话） |
 | 系统提示词 | 空（不预设） |
 
-内置模型列表：`deepseek-v4-flash`、`deepseek-chat`、`deepseek-reasoner`、`gpt-4o-mini`、`gpt-4o`、`gpt-3.5-turbo`、`qwen-plus`、`glm-4-flash`、`moonshot-v1-8k`。可在设置页自由增删。
+内置模型列表：`deepseek-v4-flash`、`deepseek-chat`、`deepseek-reasoner`、`gpt-4o-mini`、`gpt-4o`、`gpt-3.5-turbo`、`qwen-plus`、`glm-4-flash`、`moonshot-v1-8k`、`mimo-v2.5-pro`。可在设置页自由增删，每个模型可单独配置服务地址与 Key。
 
 ## 快速开始
 
@@ -101,9 +103,11 @@ gradlew :app:assembleDebug :wear:assembleDebug
 | 通义千问 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 需开通 DashScope |
 | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | |
 | Kimi | `https://api.moonshot.cn/v1` | |
+| 小米 MiMo | `https://api.xiaomimimo.com/v1` | 小米官方开放平台，模型如 `mimo-v2.5-pro` |
 | Ollama（本地） | `http://<电脑IP>:11434/v1` | 模型填本地模型名，Key 可随便填 |
 
 > 原理上任何 OpenAI 兼容的 `POST /chat/completions` 接口都可以用。
+> 切换模型时自动使用该模型对应服务商的 Base URL 与 API Key（设置页可逐模型配置）。
 
 ## 技术栈
 
