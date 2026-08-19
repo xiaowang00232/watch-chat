@@ -79,12 +79,16 @@
 
 ## 快速开始
 
-### 方式一：直接安装预构建 APK
+### 方式一：下载正式版 APK
 
-本仓库不附带 APK 安装包，请从源码构建（见方式二 / 命令行构建）：
+正式版（keystore 签名）发布在 GitHub Releases，请前往下载：
 
-- debug 构建产物：`app/build/outputs/apk/debug/app-debug.apk`、`wear/build/outputs/apk/debug/wear-debug.apk`
-- release 正式版：`gradlew :app:assembleRelease :wear:assembleRelease`（需配置 `key.properties` 签名）
+👉 **https://github.com/xiaowang00232/watch-chat/releases/**
+
+| 安装包 | 包名 | 适用设备 |
+| --- | --- | --- |
+| `watchchat-app-v0.1.3.apk` | `com.xw00232.watchchat.app` | Android 8.0+ 手机 |
+| `watchchat-wear-v0.1.3.apk` | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
 
 安装后进入设置页填入 API Key 即可直接使用（默认 Base URL、模型、流式开关均已配好）。
 
