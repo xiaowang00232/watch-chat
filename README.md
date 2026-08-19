@@ -6,7 +6,7 @@
 - **app**：Android 手机端（包名 `com.xw00232.watchchat.app`，方便日常调试与快速体验）；
 - **wear**：Wear OS 手表端（包名 `com.xw00232.watchchat.wear`，适配 372×430 / 326ppi 小屏）。
 
-当前版本：**0.1.3**（versionCode 3）
+当前版本：**1.3**（versionCode 4）
 
 ## 功能特性
 
@@ -87,8 +87,8 @@
 
 | 安装包 | 包名 | 适用设备 |
 | --- | --- | --- |
-| `watchchat-app-v0.1.3.apk` | `com.xw00232.watchchat.app` | Android 8.0+ 手机 |
-| `watchchat-wear-v0.1.3.apk` | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
+| `watchchat-app-v1.3.apk` | `com.xw00232.watchchat.app` | Android 8.0+ 手机 |
+| `watchchat-wear-v1.3.apk` | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
 
 安装后进入设置页填入 API Key 即可直接使用（默认 Base URL、模型、流式开关均已配好）。
 
