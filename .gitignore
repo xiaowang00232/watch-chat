@@ -11,6 +11,7 @@
 app/build
 wear/build
 shared/build
+*.apk
 *.keystore
 *.jks
 key.properties
