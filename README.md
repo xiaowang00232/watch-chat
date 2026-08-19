@@ -81,14 +81,10 @@
 
 ### 方式一：直接安装预构建 APK
 
-仓库 `release/` 目录附带 v0.1.3 正式版（keystore 签名）安装包：
+本仓库不附带 APK 安装包，请从源码构建（见方式二 / 命令行构建）：
 
-| 文件 | 包名 | 适用设备 |
-| --- | --- | --- |
-| `release/watchchat-app-v0.1.3.apk` | `com.xw00232.watchchat.app` | Android 8.0+ 手机 |
-| `release/watchchat-wear-v0.1.3.apk` | `com.xw00232.watchchat.wear` | Wear OS 手表（372×430 / 326ppi） |
-
-debug 构建产物位于 `app/build/outputs/apk/debug/` 与 `wear/build/outputs/apk/debug/`。
+- debug 构建产物：`app/build/outputs/apk/debug/app-debug.apk`、`wear/build/outputs/apk/debug/wear-debug.apk`
+- release 正式版：`gradlew :app:assembleRelease :wear:assembleRelease`（需配置 `key.properties` 签名）
 
 安装后进入设置页填入 API Key 即可直接使用（默认 Base URL、模型、流式开关均已配好）。
 
@@ -166,7 +162,6 @@ gradlew :app:assembleRelease :wear:assembleRelease
 
 ```
 WatchChat/
-├── release/                          正式版 APK（v0.1.3，keystore 签名）
 ├── shared/                          数据层 + 业务逻辑（两端共用，包名 com.watchchat.app）
 │   └── src/main/java/com/watchchat/app/
 │       ├── data/
